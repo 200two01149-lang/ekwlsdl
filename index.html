@@ -992,12 +992,27 @@ function noteEditor(title,text,images=[]){
  document.getElementById('notesScreen').classList.add('editing');const b=document.getElementById('notesBody');
  b.innerHTML='<div class="note-editor"><div class="note-editor-meta">'+new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'})+' · iCloud</div><input id="noteTitle" placeholder="제목" maxlength="100" aria-label="메모 제목"><textarea id="noteText" placeholder="메모를 입력하세요" aria-label="메모 내용"></textarea><div id="noteImageStrip" class="note-image-strip"></div><input type="file" id="noteImagePicker" accept="image/*" multiple hidden onchange="addNoteImages(this)"><div class="note-editor-toolbar"><button onclick="renderNotes()" title="목록">‹</button><button onclick="document.getElementById(&quot;noteImagePicker&quot;).click()" title="작은 사진 추가" aria-label="사진 추가">▧ 사진</button><button onclick="insertNoteChecklist()" title="체크리스트">☑</button><button onclick="insertNoteBullet()" title="글머리 기호">☷</button><button class="delete" id="noteDelete" onclick="deleteNote()" title="삭제">♲</button><button onclick="commitNote()" title="저장">완료</button></div></div>';
  document.getElementById('noteTitle').value=title;document.getElementById('noteText').value=text;document.getElementById('noteDelete').style.visibility=editingNote===null?'hidden':'visible';renderNoteImages();
+ // 입력 즉시 저장: 완료 버튼을 누르지 않아도 새로고침 후 기록 유지
+ ['noteTitle','noteText'].forEach(id=>document.getElementById(id).addEventListener('input',scheduleNoteAutosave));
 }
-function renderNoteImages(){const strip=document.getElementById('noteImageStrip');if(!strip)return;strip.innerHTML='';notePendingImages.forEach((src,i)=>{const wrap=document.createElement('div');wrap.className='note-image-item';const img=document.createElement('img');img.src=src;img.alt='메모 사진 '+(i+1);const remove=document.createElement('button');remove.textContent='×';remove.title='사진 삭제';remove.setAttribute('aria-label','사진 삭제');remove.onclick=()=>{notePendingImages.splice(i,1);renderNoteImages()};wrap.append(img,remove);strip.append(wrap)})}
+function renderNoteImages(){if(document.getElementById('noteTitle'))scheduleNoteAutosave();const strip=document.getElementById('noteImageStrip');if(!strip)return;strip.innerHTML='';notePendingImages.forEach((src,i)=>{const wrap=document.createElement('div');wrap.className='note-image-item';const img=document.createElement('img');img.src=src;img.alt='메모 사진 '+(i+1);const remove=document.createElement('button');remove.textContent='×';remove.title='사진 삭제';remove.setAttribute('aria-label','사진 삭제');remove.onclick=()=>{notePendingImages.splice(i,1);renderNoteImages()};wrap.append(img,remove);strip.append(wrap)})}
 async function addNoteImages(input){const files=[...input.files].filter(f=>f.type.startsWith('image/'));if(notePendingImages.length+files.length>8){alert('메모 하나에 사진은 최대 8장까지 넣을 수 있어요.');input.value='';return}for(const file of files){try{const src=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=reject;reader.onload=()=>{const image=new Image();image.onerror=reject;image.onload=()=>{const canvas=document.createElement('canvas');const scale=Math.min(1,720/Math.max(image.width,image.height));canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.68))};image.src=reader.result};reader.readAsDataURL(file)});notePendingImages.push(src)}catch(e){alert('사진을 읽을 수 없어요.')}}input.value='';renderNoteImages()}
 
 function insertNoteChecklist(){const e=document.getElementById('noteText');if(!e)return;const i=e.selectionStart;e.setRangeText('☐ ',i,e.selectionEnd,'end');e.focus()}
 function insertNoteBullet(){const e=document.getElementById('noteText');if(!e)return;const i=e.selectionStart;e.setRangeText('• ',i,e.selectionEnd,'end');e.focus()}
+let noteAutosaveTimer=null;
+function persistOpenNote(){
+ const titleEl=document.getElementById('noteTitle'),textEl=document.getElementById('noteText');
+ if(!titleEl||!textEl||!document.getElementById('notesScreen').classList.contains('editing'))return;
+ const title=titleEl.value.trim(),text=textEl.value;
+ if(!title&&!text&&!notePendingImages.length)return;
+ if(editingNote!==null){const n=notesData.find(x=>x.id===editingNote);if(n){n.title=title;n.text=text;n.images=[...notePendingImages];n.date=Date.now()}}
+ else{editingNote=Date.now();notesData.unshift({id:editingNote,title,text,images:[...notePendingImages],date:Date.now()});const del=document.getElementById('noteDelete');if(del)del.style.visibility='visible'}
+ saveNotes();
+}
+function scheduleNoteAutosave(){clearTimeout(noteAutosaveTimer);noteAutosaveTimer=setTimeout(persistOpenNote,300)}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){clearTimeout(noteAutosaveTimer);persistOpenNote()}});
+window.addEventListener('pagehide',()=>{clearTimeout(noteAutosaveTimer);persistOpenNote()});
 function commitNote(){const title=document.getElementById('noteTitle').value.trim(),text=document.getElementById('noteText').value;if(!title&&!text&&!notePendingImages.length){alert('메모를 입력해 주세요.');return}if(editingNote!==null){const n=notesData.find(x=>x.id===editingNote);if(n){n.title=title;n.text=text;n.images=[...notePendingImages];n.date=Date.now()}}else{notesData.unshift({id:Date.now(),title,text,images:[...notePendingImages],date:Date.now()})}saveNotes();renderNotes();showNotification('메모','메모가 저장되었어요.')}
 function deleteNote(){if(editingNote===null)return;if(!confirm('이 메모를 삭제할까요?'))return;notesData=notesData.filter(n=>n.id!==editingNote);editingNote=null;saveNotes();renderNotes()}
 // 시계: 현재 시간, 알람, 타이머, 스톱워치
@@ -1188,6 +1203,23 @@ updateWallpaper();
  setTimeout(receivePressMessage,4200);
  function repeat(){setTimeout(()=>{receivePressMessage();repeat()},8000+Math.floor(Math.random()*9000))}
  repeat();
+})();
+</script>
+<style>
+#archivePanel{margin:16px 16px 30px;padding:16px;background:#fff;border-radius:16px;color:#111;font-family:-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 1px 4px #00000010}
+#archivePanel button{background:#f2f2f7;color:#007aff;border:0;border-radius:11px;padding:12px 10px;font-weight:700;font-size:13px;flex:1;cursor:pointer}
+#archivePanel .archiveActions{display:flex;gap:8px;margin-top:12px}#archivePanel p{font-size:12px;color:#666;line-height:1.5;margin:8px 0}
+</style>
+<input type="file" id="archiveImportFile" accept=".json,application/json" style="display:none" onchange="archiveImport(event)">
+<script>
+(function(){
+const archiveKeys=['iphone-chat-v3','family-messages-seed-v1','iphone-settings-v1','iphone-kakao-v1','family-kakao-seed-v1','sim-kakao-ad-unread','iphone-kakao-my-profile-v1','iphone-calendar-v1','iphone-photos-v1','iphone-notes-v1','iphone-alarms-v1','sim-news-bookmarks'];
+function getKeys(){const keys=new Set(archiveKeys);for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&(/^(iphone-|sim-|family-|kakao-|news-)/.test(k)))keys.add(k)}return [...keys]}
+window.archiveExport=function(){try{if(typeof commitNote==='function'&&document.getElementById('noteTitle')&&document.getElementById('noteTitle').offsetParent){/* 메모는 완료 버튼을 눌러 먼저 저장 */}const data={format:'ekwlsdl-archive-v1',exportedAt:new Date().toISOString(),items:{}};getKeys().forEach(k=>{const v=localStorage.getItem(k);if(v!==null)data.items[k]=v});const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='아이폰_기록_백업_'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}catch(e){alert('백업 파일을 만들지 못했어요: '+e.message)}};
+window.archiveImport=async function(e){const f=e.target.files&&e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());if(obj.format!=='ekwlsdl-archive-v1'||!obj.items||typeof obj.items!=='object')throw Error('이 시뮬레이터의 백업 파일이 아닙니다.');const entries=Object.entries(obj.items);if(entries.some(([k,v])=>typeof v!=='string'||!(/^(iphone-|sim-|family-|kakao-|news-)/.test(k))))throw Error('잘못된 데이터가 포함되어 있습니다.');if(!confirm('현재 저장된 기록을 백업 파일의 내용으로 교체할까요? 기존 기록은 덮어씌워질 수 있습니다.'))return;const snapshot={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);snapshot[k]=localStorage.getItem(k)}try{entries.forEach(([k,v])=>localStorage.setItem(k,v))}catch(err){Object.keys(snapshot).forEach(k=>{try{localStorage.setItem(k,snapshot[k])}catch(_){}});throw err}alert('기록을 복원했어요. 화면을 새로고침합니다.');location.reload()}catch(err){alert('복원 실패: '+err.message)}finally{e.target.value=''}};
+window.archiveImportChoose=function(){document.getElementById('archiveImportFile').click()};
+function appendPanel(){const list=document.getElementById('list');if(!list||document.getElementById('archivePanel'))return;const p=document.createElement('div');p.id='archivePanel';p.innerHTML='<b style="font-size:17px">📦 기록 백업 및 복원</b><p>메모·첨부 사진·갤러리·카카오톡·메시지·프로필·캘린더 등 저장된 내용을 JSON 파일로 보관하세요. 같은 브라우저에서는 자동 저장되지만, 사이트 데이터 삭제나 기기 변경 시 사라질 수 있습니다.</p><div class="archiveActions"><button onclick="archiveExport()">↓ 기록 백업</button><button onclick="archiveImportChoose()">↑ 기록 복원</button></div><p>메모 편집 중이라면 먼저 ‘완료’를 눌러 저장하세요. 사진이 많으면 백업 파일도 커집니다.</p>';list.appendChild(p)}
+const original=window.showSettings;if(typeof original==='function'){window.showSettings=function(page){original.apply(this,arguments);if(!page)appendPanel()}}
 })();
 </script>
 </body></html>
