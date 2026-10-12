@@ -409,6 +409,24 @@ body{background:radial-gradient(ellipse at center,#25252a 0%,#08080a 70%)}
 #notifBanner{touch-action:none;user-select:none;-webkit-user-select:none;will-change:transform,opacity}
 
 #newsScreen .fiction-note{margin:22px 20px 36px;padding:12px 14px;border-radius:12px;background:#f4f4f6;color:#666;font-size:12px;line-height:1.55}
+
+/* iOS unified status bar, shared across all app views */
+.phone>.status{z-index:110;top:0;left:0;right:0;height:49px;padding:9px 25px 0 29px;box-sizing:border-box;pointer-events:none;color:#fff;font-size:15px;font-weight:650;letter-spacing:-.3px;text-shadow:0 1px 3px #0004;transition:color .18s,text-shadow .18s}
+.phone>.status .signals{gap:6px}
+.phone>.status .signals svg{display:block;width:19px;height:15px}
+.phone.ios-light-status>.status{color:#151519;text-shadow:none}
+.phone.ios-light-status>.status .signals svg{filter:brightness(0)}
+.phone.ios-light-status>.notch{z-index:111}
+.phone>.notch{z-index:111}
+/* App surfaces keep a dedicated status-safe zone */
+.phone>.view{padding-top:49px}
+.phone>.view .viewheader{min-height:49px;background:rgba(249,249,251,.96);border-bottom:1px solid #e8e8ed;backdrop-filter:blur(16px)}
+.phone>.view .back{font-weight:500}
+.phone>.view .viewtitle{font-size:17px;letter-spacing:-.3px}
+.phone>.view .conversation{border-bottom-color:#ececf0}
+.phone>.view .bubble{line-height:1.4}
+.phone>.view button{touch-action:manipulation}
+@media(max-width:600px){.phone>.status{padding-left:clamp(21px,6vw,29px);padding-right:clamp(19px,5vw,27px)}}
 </style><style>
 /* Apple News-inspired Today page */
 #newsScreen{background:#f2f2f7;color:#16161a;padding-top:48px}
@@ -1406,5 +1424,20 @@ function simMediaSeek(n){
  phone.addEventListener('touchend',e=>{if(e.changedTouches.length)finish(e.changedTouches[0].clientX,e.changedTouches[0].clientY)}, {passive:true});
  phone.addEventListener('mousedown',e=>begin(e.clientX,e.clientY,e.target));
  document.addEventListener('mouseup',e=>finish(e.clientX,e.clientY));
+})();
+</script><script>
+/* Keep the system status bar legible in every app and screen. */
+(function(){
+ const phone=document.querySelector('.phone'), view=document.getElementById('view');
+ if(!phone||!view)return;
+ function update(){
+   const visible=getComputedStyle(view).display!=='none';
+   const overlay=Array.from(document.querySelectorAll('.sim-sheet')).some(e=>getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&Number(getComputedStyle(e).opacity)>.05);
+   phone.classList.toggle('ios-light-status',visible&&!overlay);
+ }
+ new MutationObserver(update).observe(view,{attributes:true,attributeFilter:['class','style']});
+ new MutationObserver(update).observe(phone,{attributes:true,attributeFilter:['class','style']});
+ document.addEventListener('click',()=>requestAnimationFrame(update));
+ setInterval(update,650);update();
 })();
 </script></body></html>
